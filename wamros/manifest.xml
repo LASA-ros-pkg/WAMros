@@ -1,0 +1,14 @@
+<package>
+  <description brief="wamros">
+  Connects the Barrett WAM to ROS
+  </description>
+  <author>Dang</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/wamros</url>
+  <depend package="roscpp"/>
+  <depend package="std_msgs"/>
+  <depend package="wam_msgs"/>
+ </package>
+
+

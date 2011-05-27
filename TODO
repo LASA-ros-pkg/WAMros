@@ -1,0 +1,11 @@
+* Take in commanded cartesians and follow.
+* Take in commanded torques.
+* Make this doxyish?
+* Might be able to just use std_msgs stuff.
+* Use an action service for moving?
+* Move WAM stuff into a class?
+* Use rxconsole for messages.
+* Related: Make wamros launcher capable.
+* Make wamros into a wamlet.
+* Remove hardcoded 7dof checks.
+* Matlab connectivity?

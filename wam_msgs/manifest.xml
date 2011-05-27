@@ -1,0 +1,14 @@
+<package>
+  <description brief="wam_msgs">
+
+     wam_msgs
+
+  </description>
+  <author></author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/wam_msgs</url>
+
+</package>
+
+
