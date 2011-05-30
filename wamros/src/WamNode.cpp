@@ -39,7 +39,6 @@ void rt_thread(void *thd_){
   
   btrt_thread_struct * thd = (btrt_thread_struct *) thd_;  
   char *conf = (char *) thd->data;
-  //wam_struct * wam = TheWam->wam;
 
   //Probe and initialize the robot actuators
   err = InitializeSystem();
@@ -54,24 +53,20 @@ void rt_thread(void *thd_){
     fprintf(stderr, "OpenWAM failed");
     exit(1);
 	}
-	//else{
-	//	printf("OpenWAM succeeded\n");
-	//}
-
 	
   /* setSafetyLimits(bus, joint rad/s, tip m/s, elbow m/s);
    * For now, the joint and tip velocities are ignored and
    * the elbow velocity provided is used for all three limits.
    */
-  setSafetyLimits(0, 4, 4, 4);  // Limit to 1.5 m/s - Upped by CD
+  setSafetyLimits(0, 4, 4, 4);
   /* Set the puck torque safety limits (TL1 = Warning, TL2 = Critical).
    * Note: The pucks are limited internally to 3441 (see 'MT' in btsystem.c) 
    * Note: btsystem.c bounds the outbound torque to 8191, so entering a
    * value of 9000 for TL2 would tell the safety system to never register a 
    * critical fault.
    */
-  setProperty(0, SAFETY_MODULE, TL2, FALSE, 8000);//4700 in examples, 5700 in btdiag
-  setProperty(0, SAFETY_MODULE, TL1, FALSE, 5000);//Upped by CD
+  setProperty(0, SAFETY_MODULE, TL2, FALSE, 8000);
+  setProperty(0, SAFETY_MODULE, TL1, FALSE, 5000);
   
   // We're inited
   TheWam->startDone = TRUE;
@@ -101,7 +96,7 @@ void WamNode::init(std::string &conf)
     fprintf(stderr, "ReadSystemFromConfig returned err = %d", err);
     exit(1);
   }
-  /* Lead the user through a proper WAM startup - Assumes ncurses*/
+ 
   //User checks WAM
   printf("Make sure:\n");
   printf("1) WAM cables are secure\n");
@@ -147,16 +142,15 @@ void WamNode::init(std::string &conf)
   int stat_task = rt_task_shadow(NULL, "joint_writer", 0, 0);
 
 
-  //  printf("To exit, press Shift-Idle on pendant, then hit Ctrl-C\n\n");
+  printf("To exit, press Shift-Idle on pendant, then hit Ctrl-C\n\n");
 
   /* Set gravity scale to 1.0g */
   SetGravityUsingCalibrated(wam,1);
   SetGravityComp(wam, 1.0); 
 
-  //Start where we are
+  //Start where we are and locked
   for(int d=0;d<7;d++){
     wam->Jref->q[d] = wam->Jpos->q[d]; // reading actual joint position
-    //m_Jref[d]=wam->Jpos->q[d]; 
     setTargetJoints(wam->Jpos->q);
     active[d]=true;		
   }
@@ -181,11 +175,10 @@ int WAMcallback(struct btwam_struct *m_wam)
 
     TheWam->m_Jtrq[d] = m_wam->Jtrq->q[d]; //Record what control would say
 
-    if(! TheWam->active[d]) //We're passive
-      {  
-	m_wam->Jtrq->q[d]=0;    //no torque (other than gravity comp)
-	targetjoints[d] = m_wam->Jpos->q[d]; // and stay there ! 
-      }
+    if(! TheWam->active[d]){ //We're passive
+			m_wam->Jtrq->q[d]=0;    //no torque (other than gravity comp)
+			targetjoints[d] = m_wam->Jpos->q[d]; // and stay there ! 
+		}
   }
 
   //We have our own movingToPos which has to be reset after the WAM has finished moving.
@@ -195,12 +188,12 @@ int WAMcallback(struct btwam_struct *m_wam)
   if(MoveIsDone(m_wam) || !TheWam->movingToPos)	//Work around barretts programming style
     {
       TheWam->movingToPos = false;    
-
+			
       for(int d=0;d<7;d++)
-	{
-	  m_wam->Jref->q[d] = targetjoints[d];
-	}
-
+				{
+					m_wam->Jref->q[d] = targetjoints[d];
+				}
+			
     }
   
   TheWam->RTupdateTargetJoints(targetjoints); // update buffers 
@@ -327,7 +320,7 @@ bool WamNode::RTupdateTargetJoints(const double * target)
   if(stat==0) // we got the mutex !! 
     {
       for(int i=0;i<7;i++)
-	mTargetJoints[i] = mPreviousTargetJoints[i]; 
+				mTargetJoints[i] = mPreviousTargetJoints[i]; 
       rt_mutex_release(&target_buffer_mutex);
     }
   return stat;
@@ -342,13 +335,13 @@ bool WamNode::RTgetTargetJoints(double * target)
   if(stat==0) // we got the mutex !! 
     {
       for(int i=0;i<7;i++)
-	target[i] = mPreviousTargetJoints[i] = mTargetJoints[i];
+				target[i] = mPreviousTargetJoints[i] = mTargetJoints[i];
       rt_mutex_release(&target_buffer_mutex);
     }
   else // cant get instant access to the buffer
     {
       for(int i=0;i<7;i++)
-	target[i] = mPreviousTargetJoints[i];
+				target[i] = mPreviousTargetJoints[i];
     }
   return stat != 0;
 }
@@ -361,9 +354,9 @@ void WamNode::setTargetJoints(const double * target)
   if(stat==0)
     {
       for (int i = 0; i < 7; i++)
-	{
-	  mTargetJoints[i] = target[i];
-	}
+				{
+					mTargetJoints[i] = target[i];
+				}
       rt_mutex_release(&target_buffer_mutex);
     }
   // else -> epic fail .. 

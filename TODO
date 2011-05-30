@@ -1,11 +1,14 @@
-* Take in commanded cartesians and follow.
-* Take in commanded torques.
-* Make this doxyish?
-* Might be able to just use std_msgs stuff.
-* Use an action service for moving?
-* Move WAM stuff into a class?
-* Use rxconsole for messages.
-* Related: Make wamros launcher capable.
-* Make wamros into a wamlet.
-* Remove hardcoded 7dof checks.
-* Matlab connectivity?
+Roadmap for WAMros:
+
+1) Report and accept endpoint coordinates (cartesian).
+
+2) Report and accept torques.
+
+3) Transition to libbarrett
+
+4) Add hand support
+
+
+Known issues:
+
+7 DOF is hardcoded, allow for 4.

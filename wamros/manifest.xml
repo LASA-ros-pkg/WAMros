@@ -1,13 +1,14 @@
 <package>
   <description brief="wamros">
-  Connects the Barrett WAM to ROS
+  Wraps the Barrett WAM btclient library for ROS.  Currently position
+  control only.
   </description>
-  <author>Dang</author>
+  <author>Grollman, D'Halluin, Daniel and Stober - EPFL-LASA</author>
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/wamros</url>
   <depend package="roscpp"/>
-  <depend package="std_msgs"/>
+  <depend package="std_srvs"/>
   <depend package="wam_msgs"/>
  </package>
 

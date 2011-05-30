@@ -3,7 +3,7 @@
  * a nice wrapper around Barret's wam_struct
  * for some OO cleaner code... 
  * This wrapper manages the realtime thread, the initialisation procedure
- * and provide a convenient way of sending joint (soon cartesian ?) targets
+ * and provide a convenient way of sending joint targets
  * to robot. 
  *
 `* Notes : this needs to be compiled with -DXENOMAI and all the xenomai stack 
@@ -19,8 +19,6 @@
 
 
 //The WAM stuff
-// #include "btwam.h" or not , it defines global, you can only include this once in a program
-// biiggg sigh .. 
 #include <native/mutex.h>
 #include <string>
 #ifndef _BTWAM_H

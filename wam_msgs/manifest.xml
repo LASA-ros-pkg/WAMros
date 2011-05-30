@@ -1,10 +1,18 @@
 <package>
   <description brief="wam_msgs">
 
-     wam_msgs
+     wam_msgs: Messages for the WAMros node.  These are compiled
+     separately to allow for using the messages on a system where the
+     main node may not itself compile.  I.e, one without Xenomai or
+     btclient.
+
+   msgs: JointAngles, a variable length float64 array
+         WamStatus, an enumed int
+   srvs: ActivePassive, a variable length binary array
+         MoveToPos, a JointAngle
 
   </description>
-  <author></author>
+  <author>Grollman, D'Halluin, Daniel and Stober - EPFL-LASA</author>
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/wam_msgs</url>

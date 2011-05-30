@@ -1,16 +1,10 @@
-/* Dang
-   Connect the Barret WAM to ROS
-   Uses Ncurses to display info
-
+/* Connect the Barret WAM to ROS
+   
    Init WAM
    Init ROS
-   Spit sensed joint angles to topic
-   Lock individual joints with service
-   Spit sensed end effector coords to topic
+	 Lock individual joints with service   
+	 Spit sensed joint angles to topic
    Take in commanded joint angles and follow
-   Spit commanded torques to topic
-
-   NOTES:  Only edit wam-> stuff in WAM callback (not mutexed!)
 */
 
 //Stuff we need
@@ -26,7 +20,8 @@
 #include <wam_msgs/JointAngles.h>
 #include <wam_msgs/ActivePassive.h>
 #include <wam_msgs/MoveToPos.h>
-#include <wam_msgs/GoHome.h>
+//#include <wam_msgs/GoHome.h>
+#include <std_srvs/Empty.h>
 #include <wam_msgs/WamStatus.h>
 
 #include "WamNode.hpp"
@@ -37,8 +32,6 @@
 #define SIGN(x) (x<0 ? -1 : 1)
 #define ABS(x) (x<0 ? -x : x)
 #define FOR(i,n) for(int i=0; i<n; i++)
-
-
 
 WamNode * MyWam = NULL;
 
@@ -57,7 +50,7 @@ unsigned long last_command_us=0; // when was last joint command
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 //This service takes no arguments and will move the WAM into what it thinks is it's home position.
-bool goHomeSRV(wam_msgs::GoHome::Request   &req, wam_msgs::GoHome::Response &res )
+bool goHomeSRV(std_srvs::Empty::Request   &req, std_srvs::Empty::Response &res )
 {
   MyWam->goHome();
   return true;
@@ -126,11 +119,11 @@ int main(int argc, char **argv)
   ros::NodeHandle n("wam"); // adding the wam namespace for topics/services
   ros::Rate loop_rate(500);
   
-  //Start up WAM - really just need *wam  
+  //Start up WAM
   ros::param::get("~wamconf", wamconf);
   ros::param::get("~doinit", doinit); 
   printf("Using config file: %s\n", wamconf.c_str());
-  MyWam->init(wamconf); //Default location for conf file
+  MyWam->init(wamconf);
 
   double * init_joints = MyWam->getJoints();
   if (doinit)
@@ -160,13 +153,13 @@ int main(int argc, char **argv)
       currentStatus.status = wam_msgs::WamStatus::MOVING;
     else 
       {
-	  struct timespec tv;
-	  clock_gettime(CLOCK_MONOTONIC,&tv); 
-	  unsigned long current_time_ = tv.tv_nsec / 1000 + tv.tv_sec * 1000000; 
-	  if( (current_time_ - last_command_us  ) < 1e5) // 100 ms idle time ? 
-	    currentStatus.status = wam_msgs::WamStatus::COMMAND;
-	  else
-	    currentStatus.status = wam_msgs::WamStatus::IDLE;
+				struct timespec tv;
+				clock_gettime(CLOCK_MONOTONIC,&tv); 
+				unsigned long current_time_ = tv.tv_nsec / 1000 + tv.tv_sec * 1000000; 
+				if( (current_time_ - last_command_us  ) < 1e5) // 100 ms idle time ? 
+					currentStatus.status = wam_msgs::WamStatus::COMMAND;
+				else
+					currentStatus.status = wam_msgs::WamStatus::IDLE;
       }
 
     wam_JA_pub.publish(currentJA);
