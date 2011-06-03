@@ -27,6 +27,8 @@ WamNode::WamNode()
     }
   TheWam = this;
   btrt_mutex_create(&target_buffer_mutex);
+
+  RXRYRZ = new_v3();
 }
 
 //Realtime Thread for CAN communications
@@ -166,33 +168,41 @@ int WAMcallback(struct btwam_struct *m_wam)
 {
   double targetjoints[7];
 
-  
   // reading joints angle/torques and store them 
   // so that by default we reuse the last sent read joints, -> not moving
   TheWam->RTgetTargetJoints(targetjoints); 
   
   for(int d=0;d<7;d++){
-
     TheWam->m_Jtrq[d] = m_wam->Jtrq->q[d]; //Record what control would say
 
     if(! TheWam->active[d]){ //We're passive
-			m_wam->Jtrq->q[d]=0;    //no torque (other than gravity comp)
-			targetjoints[d] = m_wam->Jpos->q[d]; // and stay there ! 
-		}
+      m_wam->Jtrq->q[d]=0;    //no torque (other than gravity comp)
+      targetjoints[d] = m_wam->Jpos->q[d]; // and stay there ! 
+    }
   }
 
-  //We have our own movingToPos which has to be reset after the WAM has finished moving.
-  // we also don't want to send joint targets while the wam is moving during 
-  // a MoveWam  call ? 
+  // If any of the wam move services are called then Jref should not
+  // be set during callbacks.
 
-  if(MoveIsDone(m_wam) || !TheWam->movingToPos)	//Work around barretts programming style
+  if(MoveIsDone(m_wam) || !TheWam->movingToPos)
     {
-      TheWam->movingToPos = false;    
+
+      if (MoveIsDone(m_wam) && TheWam->movingToPosCart){
+
+	// Return to joint space after cartesian move.
+	SetJointSpace(m_wam);
+	MoveSetup(m_wam, 0.5, 0.5);
+
+	TheWam->movingToPosCart = false;
+      }
+      else {
+	TheWam->movingToPos = false;    
 			
-      for(int d=0;d<7;d++)
-				{
-					m_wam->Jref->q[d] = targetjoints[d];
-				}
+	for(int d=0;d<7;d++)
+	  {
+	    m_wam->Jref->q[d] = targetjoints[d];
+	  }
+      }
 			
     }
   
@@ -215,6 +225,44 @@ void WamNode::cleanup()
   system("rm -f wam.conf.flt wam.conf.tmp"); // eark .. 
   // FIXME : do a proper thread_join ?? 
   
+  // Free the vect_3 holding orientation.
+  destroy_vn((vect_n **) &RXRYRZ);
+}
+
+void WamNode::goToCart(const double * pos, const double * orient, bool wait)
+{
+
+  matr_h *matrix;
+  vect_3 *Rxyz;
+
+  // changes the behavior of the callback - disables setting Jref
+  movingToPosCart = true;
+  
+  // Convert from X, Y, Z, Rx, Ry, Rz to a homogeneous matrix
+  matrix = new_mh();
+  Rxyz = new_v3();
+  const_v3(Rxyz, orient[0],orient[1],orient[2]);
+  XYZftoR_m3((matr_3*)matrix, Rxyz); // Convert from Rxyz to R[3x3]
+  ELEM(matrix, 0, 3) = pos[0]; // Insert the X position
+  ELEM(matrix, 1, 3) = pos[1]; // Insert the Y position
+  ELEM(matrix, 2, 3) = pos[2]; // Insert the Z position
+
+  // go active
+  for(int d=0;d<7;d++)
+    active[d]=true;
+   
+  SetCartesianSpace(wam);
+  MoveSetup( wam, 0.5, 0.5 );
+   
+  // In Cartesian space, MoveWAM() expects the full homogeneous matrix in vector format 
+  MoveWAM(wam, (vect_n*)matrix);    
+
+  if (wait)
+    while (!MoveIsDone(wam)) usleep(10000);
+
+  destroy_mn((matr_mn **)&matrix);
+  destroy_vn((vect_n **)&Rxyz);
+
 }
 
 void WamNode::goTo(const double * pos, bool wait)
@@ -226,7 +274,6 @@ void WamNode::goTo(const double * pos, bool wait)
   setTargetJoints(moveToPos);
   movingToPos = true;
   vect_n * vector2 = new_vn(wam->dof );
-
 	
   const_vn( vector2,moveToPos[0],moveToPos[1],moveToPos[2],moveToPos[3],moveToPos[4],moveToPos[5],moveToPos[6] );
 
@@ -236,10 +283,10 @@ void WamNode::goTo(const double * pos, bool wait)
   MoveWAM(wam, vector2);
   destroy_vn(&vector2);
  
-	// waiting 'til we reach the posture
+  // waiting 'til we reach the posture
   if(wait) 
-		while(!MoveIsDone(wam))
-			usleep(10000);
+    while(!MoveIsDone(wam))
+      usleep(10000);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -305,8 +352,22 @@ double * WamNode::getMotorAngles()
   return wam->Mpos->q;
 }
 
-double * WamNode::getCartesian()
-{
+double * WamNode::getCartesianOrientation(){
+  // From the btclient documentation:
+
+  // NOTE: matr_3 is actually a 4x4 "homogeneous" matrix: [ r11 r12
+  // r13 x ] [ r21 r22 r23 y ] [ r31 r32 r33 z ] [ 0 0 0 1 ] Many
+  // functions only operate on the inner 3x3 "rotation" matrix.
+
+  RtoXYZf_m3((matr_3*)wam->HMpos, RXRYRZ);
+  return RXRYRZ->q;
+}
+
+double * WamNode::getHomogeneousMatrix(){
+  return wam->HMpos->q;
+}
+
+double * WamNode::getCartesianPosition(){
   return wam->Cpos->q;
 }
 

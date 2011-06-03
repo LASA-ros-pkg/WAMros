@@ -20,10 +20,13 @@
 #include <wam_msgs/JointAngles.h>
 #include <wam_msgs/ActivePassive.h>
 #include <wam_msgs/MoveToPos.h>
+#include <wam_msgs/MoveToCart.h>
 //#include <wam_msgs/GoHome.h>
 #include <std_srvs/Empty.h>
 #include <wam_msgs/WamStatus.h>
-
+#include <wam_msgs/CartesianPosition.h>
+#include <wam_msgs/CartesianOrientation.h>
+#include <wam_msgs/HomogeneousMatrix.h>
 #include "WamNode.hpp"
 
 //Useful macros
@@ -79,13 +82,24 @@ bool moveToSRV(wam_msgs::MoveToPos::Request  &req, wam_msgs::MoveToPos::Response
   return true;
 }
 
+bool moveToCartSRV(wam_msgs::MoveToCart::Request &req, wam_msgs::MoveToCart::Response &res )
+{
+  // not sure if this is necessary -- sizes are defined in msgs
+  if (req.pos.position.size() != 3 || req.orient.euler.size() != 3)
+    return false;
+
+  double *pos = &req.pos.position[0];
+  double *orient = &req.orient.euler[0];
+  MyWam->goToCart(pos, orient, false);
+  return true;
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //Write where we want to go into desired m_Jref
 
 void Jref_callback(const wam_msgs::JointAnglesConstPtr& msg)
 {
-  if(!MyWam->movingToPos and msg->radians.size()==7) // checking if we aren't in goto mode 
+  if(!MyWam->movingToPosCart and !MyWam->movingToPos and msg->radians.size()==7) // checking if we aren't in goto mode 
     {
        struct timespec tv;
        // RT timer
@@ -129,6 +143,10 @@ int main(int argc, char **argv)
   if (doinit)
     MyWam->initMoves();  	// do the nice motion at startup.
 
+  ros::Publisher wam_CP_pub = n.advertise<wam_msgs::CartesianPosition>("cartesian_position", 1);
+  ros::Publisher wam_CO_pub = n.advertise<wam_msgs::CartesianOrientation>("cartesian_orientation", 1);
+  ros::Publisher wam_HM_pub = n.advertise<wam_msgs::HomogeneousMatrix>("homogeneous_matrix", 1);
+
   ros::Publisher wam_JA_pub = n.advertise<wam_msgs::JointAngles>("joints_sensed", 1);
   ros::Publisher wam_ST_pub = n.advertise<wam_msgs::WamStatus>("status",1);
 
@@ -137,9 +155,15 @@ int main(int argc, char **argv)
   ros::ServiceServer active_service = n.advertiseService("active_passive", activeSRV);
   ros::ServiceServer movetopos_srv = n.advertiseService("moveToPos",moveToSRV);
   ros::ServiceServer goHome_srv = n.advertiseService("goHome",goHomeSRV);
+  ros::ServiceServer movetocart_srv = n.advertiseService("moveToCart", moveToCartSRV);
 
   wam_msgs::JointAngles currentJA;
   currentJA.radians.resize(7);
+
+  wam_msgs::CartesianPosition currentCP;
+  wam_msgs::CartesianOrientation currentCO;
+  wam_msgs::HomogeneousMatrix currentHM;
+
   wam_msgs::WamStatus currentStatus;
 
   while(ros::ok()){ //Catching ctrlC is done by ROS
@@ -148,8 +172,26 @@ int main(int argc, char **argv)
     for(int d=0;d<7;d++){
       currentJA.radians[d] = joints[d];
     }
+
+    // position is in meters
+    double * cp = MyWam->getCartesianPosition();
+    for (int i=0;i<3;i++){
+      currentCP.position[i] = cp[i];
+    }
     
-    if( MyWam->movingToPos)
+    // orientation is represented using rotation matrix
+    double * co = MyWam->getCartesianOrientation();
+    for (int i=0;i<3;i++){
+      currentCO.euler[i] = co[i];
+    }
+
+    // homogeneous matrix form is required for cartesian control
+    double * hm = MyWam->getHomogeneousMatrix();
+    for (int i=0;i<16;i++){
+      currentHM.element[i] = hm[i];
+    }
+
+    if( MyWam->movingToPos || MyWam->movingToPosCart)
       currentStatus.status = wam_msgs::WamStatus::MOVING;
     else 
       {
@@ -161,6 +203,11 @@ int main(int argc, char **argv)
 				else
 					currentStatus.status = wam_msgs::WamStatus::IDLE;
       }
+
+    // Cartesian coordinate info
+    wam_CO_pub.publish(currentCO);
+    wam_CP_pub.publish(currentCP);
+    wam_HM_pub.publish(currentHM);
 
     wam_JA_pub.publish(currentJA);
     wam_ST_pub.publish(currentStatus);

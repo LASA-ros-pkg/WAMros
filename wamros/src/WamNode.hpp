@@ -26,6 +26,7 @@
 struct wam_struct;
 struct btwam_struct;
 struct btrt_thread_struct;
+struct vect_3;
 
 #endif
 
@@ -48,6 +49,8 @@ protected :
   double mPreviousTargetJoints[7]; // joints sent to robots
                                    // this one is directly written by rt loop
 
+  
+
 public :
 
   // sad part : these should be protected / private , but 
@@ -60,6 +63,11 @@ public :
   double moveToPos[7]; // buffer to store target joint angles 
   bool movingToPos;
 
+  // buffers to store cartesian move information
+  double moveToCartPos[3];
+  double moveToCartOrient[3];
+  bool movingToPosCart;
+
   std::string wamconf; // the wam config file
 
   int  startDone; // is the wam started ? 
@@ -68,6 +76,8 @@ public :
   //  double m_Jref[7]; // read/write joints buffer
   
   double m_Jtrq[7]; // read torques buffer
+
+  vect_3 *RXRYRZ; // store wam orientation information
 
   WamNode();
 
@@ -81,6 +91,7 @@ public :
    *  @param wait: wether to block until given posture is reached 
    */
   void goTo(const double * pos ,bool wait = true); 
+  void goToCart(const double * pos, const double * orient, bool wait = true);
 
   double * getJoints();
   double * getJointsCommand();
@@ -89,7 +100,9 @@ public :
   double * getGravityTorques();
   double * getMotorTorques();
   double * getMotorAngles();
-  double * getCartesian();
+  double * getCartesianOrientation(); // RX,RY,RZ
+  double * getCartesianPosition(); // X,Y,Z
+  double * getHomogeneousMatrix(); // Full cartesian homogeneous matrix.
 
   void goHome()
   {
