@@ -27,14 +27,21 @@ struct wam_struct;
 struct btwam_struct;
 struct btrt_thread_struct;
 struct vect_3;
+struct matr_h;
 
 #endif
 
 //Should get from wam.conf
 const double homePosition[] = { 0, -2, 0.0, 3.14, 0 , 0 , 0}; // "home" posture
 
-#define Ts (0.002) // tick tock period .. 
+// determine whether joint control is governed by the joint or cartesian topics
+enum Mode { JOINT = 0, CARTESIAN };
 
+#define Ts (0.002) // tick tock period .. 
+#define WAM_X_CENTER (0.50)
+#define WAM_Y_CENTER (0.00)
+#define WAM_M_PER_PIX (0.001)
+#define WAM_M_PER_TICK (0.0002)
 
 class WamNode
 {
@@ -49,7 +56,11 @@ protected :
   double mPreviousTargetJoints[7]; // joints sent to robots
                                    // this one is directly written by rt loop
 
-  
+  double mTargetPos[2];
+  double mPreviousTargetPos[2];
+
+  // nobody else should be able to update mode outside of switchSpace
+  Mode mode;
 
 public :
 
@@ -59,7 +70,9 @@ public :
   // TODO : write mutexed or a least safer setters/getters 
 
   wam_struct * wam;
+  FILE *debugfile;
 
+  bool debug;
   double moveToPos[7]; // buffer to store target joint angles 
   bool movingToPos;
 
@@ -91,6 +104,11 @@ public :
    *  @param wait: wether to block until given posture is reached 
    */
   void goTo(const double * pos ,bool wait = true); 
+
+  /** move to cartesian coord
+   * @param pos : a double[3] array of x,y,z coordinates (in meters)
+   * @param orient : a double[3] array of rx,ry,rz orientations (euler angles) 
+   */
   void goToCart(const double * pos, const double * orient, bool wait = true);
 
   double * getJoints();
@@ -102,7 +120,15 @@ public :
   double * getMotorAngles();
   double * getCartesianOrientation(); // RX,RY,RZ
   double * getCartesianPosition(); // X,Y,Z
+  double * getCartesianCommand();
+  double * getCartesianTargets();
   double * getHomogeneousMatrix(); // Full cartesian homogeneous matrix.
+  int getActiveSC(); // debug stuff
+  int getZeroed(); // debug stuff
+  Mode getCurrentMode(); // Get the current mode (cartesian or joints).
+  Mode switchSpace(Mode); // Toggle between joint and cartesian spaces.
+  void pos2HM(const double *, const double *, vect_3 *, matr_h *);
+  void hm2Pos(double *, double *, vect_3 *, matr_h *);
 
   void goHome()
   {
@@ -119,6 +145,11 @@ public :
   bool RTupdateTargetJoints(const double * target);
 
   void setTargetJoints(const double * joints);
+
+  bool RTgetTargetPosition(double *pos);
+  bool RTupdateTargetPosition(const double *pos);
+
+  void setTargetPosition(const double *pos);
   
   virtual ~WamNode(){};
 };
