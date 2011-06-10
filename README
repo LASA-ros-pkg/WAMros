@@ -6,15 +6,21 @@ arm. wamros provides the following services:
 /wam/active_passive
 /wam/goHome
 /wam/moveToPos 
+/wam/moveToCart -- move tool to a cartesian coordinate
+/wam/switchMode -- switches between joint/cartesian control space
 
 wamros subscribes to the following topics:
 
 /wam/joints_command
+/wam/cartesian_command -- in internal units
 
 wamros produces for the following topics:
 
 /wam/joints_sensed
 /wam/status
+/wam/cartesian_coordinates -- in meters
+/wam/homogeneous_matrix -- different representation of cartesian coordinates
+/wam/cartesian_targets -- in internal units
 
 *** Getting Started ***
 
