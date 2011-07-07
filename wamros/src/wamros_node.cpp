@@ -1,8 +1,8 @@
 /* Connect the Barret WAM to ROS
-   
+
    Init WAM
    Init ROS
-	 Lock individual joints with service   
+	 Lock individual joints with service
 	 Spit sensed joint angles to topic
    Take in commanded joint angles and follow
 */
@@ -78,13 +78,13 @@ bool moveToSRV(wam_msgs::MoveToPos::Request  &req, wam_msgs::MoveToPos::Response
   if(req.pos.radians.size()!=7)
     return false;
   double * target = &req.pos.radians[0];
-  MyWam->goTo(target,false); // don't wait , don't block ROS.. 
+  MyWam->goTo(target,false); // don't wait , don't block ROS..
   return true;
 }
 
 bool switchModeSRV(wam_msgs::SwitchModes::Request &req, wam_msgs::SwitchModes::Response &res ){
   switch((int) req.mode){
-  case 0: 
+  case 0:
     ROS_INFO("Switching to JOINT space");
     MyWam->switchSpace(JOINT);
     break;
@@ -93,7 +93,7 @@ bool switchModeSRV(wam_msgs::SwitchModes::Request &req, wam_msgs::SwitchModes::R
     MyWam->switchSpace(CARTESIAN);
     break;
   }
-      
+
   ROS_INFO("isZerod: %d", MyWam->getZeroed());
   ROS_INFO("Active SC Code: %d", MyWam->getActiveSC());
   return true;
@@ -116,35 +116,35 @@ bool moveToCartSRV(wam_msgs::MoveToCart::Request &req, wam_msgs::MoveToCart::Res
 
 void Jref_callback(const wam_msgs::JointAnglesConstPtr& msg)
 {
-  if(!MyWam->movingToPosCart and !MyWam->movingToPos and msg->radians.size()==7) // checking if we aren't in goto mode 
+  if(!MyWam->movingToPosCart and !MyWam->movingToPos and msg->radians.size()==7) // checking if we aren't in goto mode
     {
        struct timespec tv;
        // RT timer
-       // on a standart linux this has a micro second resolution. 
+       // on a standart linux this has a micro second resolution.
 
-       clock_gettime(CLOCK_MONOTONIC,&tv); 
+       clock_gettime(CLOCK_MONOTONIC,&tv);
        last_command_us =  tv.tv_nsec / 1000 + tv.tv_sec * 1000000;
-       MyWam->setTargetJoints(&msg->radians[0]); 
+       MyWam->setTargetJoints(&msg->radians[0]);
     }
 }
 
 void HMref_callback(const wam_msgs::CartesianTargetsConstPtr &msg){
   double *tp,*hmref, *hmpos;
 
-  if (!MyWam->movingToPosCart and !MyWam->movingToPos and msg->pos.size() == 2){
+  if (!MyWam->movingToPosCart and !MyWam->movingToPos and msg->pos.size() == 3){
     struct timespec tv;
     clock_gettime(CLOCK_MONOTONIC, &tv);
     last_command_us = tv.tv_nsec / 1000 + tv.tv_sec * 1000000;
 
     ROS_DEBUG("Calling HMref_callback");
-    ROS_DEBUG("position received: %f %f", msg->pos[0], msg->pos[1]);
+    ROS_DEBUG("position received: %f %f %f", msg->pos[0], msg->pos[1], msg->pos[2]);
 
     MyWam->setTargetPosition(&msg->pos[0]);
-    
+
     hmref = MyWam->getCartesianCommand();
     hmpos = MyWam->getHomogeneousMatrix();
     tp = MyWam->getCartesianTargets();
-    ROS_DEBUG("target position: %f %f", tp[0], tp[1]);
+    ROS_DEBUG("target position: %f %f %f", tp[0], tp[1], tp[2]);
     ROS_DEBUG("hmref position: %f %f %f", hmref[3], hmref[7], hmref[11]);
     ROS_DEBUG("hmpos position: %f %f %f", hmpos[3], hmpos[7], hmpos[11]);
   }
@@ -162,14 +162,14 @@ int main(int argc, char **argv)
   for(int d=0;d<7;d++)
     MyWam->active[d]=false;
 
-  //Start up ROS 
+  //Start up ROS
   ros::init(argc, argv, "wamros_node");
   ros::NodeHandle n("wam"); // adding the wam namespace for topics/services
   ros::Rate loop_rate(500);
-  
+
   //Start up WAM
   ros::param::get("~wamconf", wamconf);
-  ros::param::get("~doinit", doinit); 
+  ros::param::get("~doinit", doinit);
   printf("Using config file: %s\n", wamconf.c_str());
   MyWam->init(wamconf);
 
@@ -223,7 +223,7 @@ int main(int argc, char **argv)
     }
 
     double * ct = MyWam->getCartesianTargets();
-    for (int i = 0; i<2; i++){
+    for (int i = 0; i<3; i++){
       currentCT.pos[i] = ct[i];
     }
 
@@ -234,12 +234,12 @@ int main(int argc, char **argv)
 
     if( MyWam->movingToPos || MyWam->movingToPosCart)
       currentStatus.status = wam_msgs::WamStatus::MOVING;
-    else 
+    else
       {
 				struct timespec tv;
-				clock_gettime(CLOCK_MONOTONIC,&tv); 
-				unsigned long current_time_ = tv.tv_nsec / 1000 + tv.tv_sec * 1000000; 
-				if( (current_time_ - last_command_us  ) < 1e5) // 100 ms idle time ? 
+				clock_gettime(CLOCK_MONOTONIC,&tv);
+				unsigned long current_time_ = tv.tv_nsec / 1000 + tv.tv_sec * 1000000;
+				if( (current_time_ - last_command_us  ) < 1e5) // 100 ms idle time ?
 					currentStatus.status = wam_msgs::WamStatus::COMMAND;
 				else
 					currentStatus.status = wam_msgs::WamStatus::IDLE;
@@ -253,8 +253,8 @@ int main(int argc, char **argv)
     wam_JA_pub.publish(currentJA);
     wam_ST_pub.publish(currentStatus);
 
-    ros::spinOnce();		
-    loop_rate.sleep();		
+    ros::spinOnce();
+    loop_rate.sleep();
   }
 
   //Cleanup

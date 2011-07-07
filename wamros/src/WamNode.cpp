@@ -1,4 +1,4 @@
-#include "btwam.h" 
+#include "btwam.h"
 #include "WamNode.hpp"
 
 //Stuff we need
@@ -11,17 +11,17 @@
 #include <curses.h>
 #include <fstream>
 
-WamNode * TheWam = NULL; // store singleton wam-wrapper object 
+WamNode * TheWam = NULL; // store singleton wam-wrapper object
 
 WamNode::WamNode()
 {
   wam = NULL;
   movingToPos = false;
 
-  if(TheWam != NULL) 
+  if(TheWam != NULL)
     {
-      // we already created a WamNode, this is bad .. 
-      // should never happen .. 
+      // we already created a WamNode, this is bad ..
+      // should never happen ..
       printf("Can't create two WamNode .. you have only one wam right ?? \n");
       exit(1);
     }
@@ -33,13 +33,13 @@ WamNode::WamNode()
 
 //Realtime Thread for CAN communications
 //Errors use fprintf which is not-realtime, because...they're errors
-// we should stick to c - style function calls for threads .. 
+// we should stick to c - style function calls for threads ..
 
 void rt_thread(void *thd_){
-  
+
   int err;
-  
-  btrt_thread_struct * thd = (btrt_thread_struct *) thd_;  
+
+  btrt_thread_struct * thd = (btrt_thread_struct *) thd_;
   char *conf = (char *) thd->data;
 
   //Probe and initialize the robot actuators
@@ -48,34 +48,34 @@ void rt_thread(void *thd_){
     fprintf(stderr,"InitializeSystem returned err = %d", err);
     exit(1);
   }
-	
+
   //Initialize and get a handle to the robot on the first bus
   printf("opening config file in %s \n",conf);
   if((TheWam-> wam = OpenWAM(conf, 0)) == NULL){
     fprintf(stderr, "OpenWAM failed");
     exit(1);
 	}
-	
+
   /* setSafetyLimits(bus, joint rad/s, tip m/s, elbow m/s);
    * For now, the joint and tip velocities are ignored and
    * the elbow velocity provided is used for all three limits.
    */
   setSafetyLimits(0, 4, 4, 4);
   /* Set the puck torque safety limits (TL1 = Warning, TL2 = Critical).
-   * Note: The pucks are limited internally to 3441 (see 'MT' in btsystem.c) 
+   * Note: The pucks are limited internally to 3441 (see 'MT' in btsystem.c)
    * Note: btsystem.c bounds the outbound torque to 8191, so entering a
-   * value of 9000 for TL2 would tell the safety system to never register a 
+   * value of 9000 for TL2 would tell the safety system to never register a
    * critical fault.
    */
   setProperty(0, SAFETY_MODULE, TL2, FALSE, 8000);
   setProperty(0, SAFETY_MODULE, TL1, FALSE, 5000);
-  
+
   // We're inited
   TheWam->startDone = TRUE;
   /* Spin until we are told to exit */
   while (!btrt_thread_done(thd)){
     usleep(10000);
-  }   
+  }
   /* Remove this thread from the realtime scheduler */
   btrt_thread_exit(thd);
 }
@@ -91,7 +91,7 @@ void WamNode::init(std::string &conf)
   openlog("WAM", LOG_CONS | LOG_NDELAY, LOG_USER);
   atexit(closelog);
 
-	
+
   /* Read the WAM configuration file */
   TheWam->wamconf = conf;
   err = ReadSystemFromConfig((char *) TheWam->wamconf.c_str(), &busCount);
@@ -99,7 +99,7 @@ void WamNode::init(std::string &conf)
     fprintf(stderr, "ReadSystemFromConfig returned err = %d", err);
     exit(1);
   }
- 
+
   //User checks WAM
   printf("Make sure:\n");
   printf("1) WAM cables are secure\n");
@@ -108,7 +108,7 @@ void WamNode::init(std::string &conf)
   printf("4) Shift-Idle is active (LED=0)\n");
   printf("5) WAM is home (check wrist)\n");
   printf("Then press enter:");
-  
+
   getchar();
 
   /* Spin off the RT task to set up the CAN Bus */
@@ -117,18 +117,18 @@ void WamNode::init(std::string &conf)
   rt_thd = new_btrt_thread();
   wam_thd = new_btrt_thread();
 
-  // firing a thread with RT priority 
-  btrt_thread_create(rt_thd,"rtt", 45, (void*) rt_thread, (void *) TheWam->wamconf.c_str()); 
+  // firing a thread with RT priority
+  btrt_thread_create(rt_thd,"rtt", 45, (void*) rt_thread, (void *) TheWam->wamconf.c_str());
 
   while(!startDone)
     usleep(10000);
-  
+
   registerWAMcallback(wam, (void*)WAMcallback);
   /* Spin off the WAM control loop */
   wam_thd->period = Ts; // Control loop period in seconds
-  
+
   // this function ( WAMControlThread ) is not  ours .. it's barret's control
-  // loop... 
+  // loop...
   btrt_thread_create(wam_thd, "ctrl", 90, (void*)WAMControlThread, (void*)wam);
   //User activates WAM
   printf("Press Shift+Activate then press <Enter>:");
@@ -139,8 +139,8 @@ void WamNode::init(std::string &conf)
 
   // to get the mutex lock, we need to become a xenomai task
   // this will transform the main thread in xenomai RT task, with priority 0
-  // since there is no way to unshadow, it will stay as is. 
-  // another solution would be to launch a rt_task to do the job.. 
+  // since there is no way to unshadow, it will stay as is.
+  // another solution would be to launch a rt_task to do the job..
 
   int stat_task = rt_task_shadow(NULL, "joint_writer", 0, 0);
 
@@ -149,19 +149,19 @@ void WamNode::init(std::string &conf)
 
   /* Set gravity scale to 1.0g */
   SetGravityUsingCalibrated(wam,1);
-  SetGravityComp(wam, 1.0); 
+  SetGravityComp(wam, 1.0);
 
   //Start where we are and locked
   // for(int d=0;d<7;d++){
   //   wam->Jref->q[d] = wam->Jpos->q[d]; // reading actual joint position
   //   setTargetJoints(wam->Jpos->q);
-  //   active[d]=true;		
+  //   active[d]=true;
   // }
 
   double pos[2];
   pos[0] = 300;
   pos[1] = 200;
-  
+
   setTargetPosition(pos);
 
 
@@ -175,30 +175,33 @@ int WAMcallback(struct btwam_struct *m_wam)
 {
   double wam_x_desired;
   double wam_y_desired;
-   
+  double wam_z_desired;
+
   double wam_x_present;
   double wam_y_present;
-   
+  double wam_z_present;
+
   double wam_x_command;
   double wam_y_command;
-  double x,y;
-  double targetpos[2];
+  double wam_z_command;
+  double x,y,z;
+  double targetpos[3];
 
   double targetjoints[7];
 
   switch(TheWam->getCurrentMode()){
   case JOINT:
 
-    // reading joints angle/torques and store them 
+    // reading joints angle/torques and store them
     // so that by default we reuse the last sent read joints, -> not moving
-    TheWam->RTgetTargetJoints(targetjoints); 
-  
+    TheWam->RTgetTargetJoints(targetjoints);
+
     for(int d=0;d<7;d++){
       TheWam->m_Jtrq[d] = m_wam->Jtrq->q[d]; //Record what control would say
 
       if(!TheWam->active[d]){  //We're passive
 	m_wam->Jtrq->q[d]=0;    //no torque (other than gravity comp)
-	targetjoints[d] = m_wam->Jpos->q[d]; // and stay there ! 
+	targetjoints[d] = m_wam->Jpos->q[d]; // and stay there !
       }
     }
 
@@ -206,59 +209,73 @@ int WAMcallback(struct btwam_struct *m_wam)
     // be set during callbacks.
 
     if(MoveIsDone(m_wam) || !TheWam->movingToPos){
-      TheWam->movingToPos = false;    
-			
+      TheWam->movingToPos = false;
+
       for(int d=0;d<7;d++){
 	m_wam->Jref->q[d] = targetjoints[d];
       }
     }
-  
-    TheWam->RTupdateTargetJoints(targetjoints); // update buffers 
+
+    TheWam->RTupdateTargetJoints(targetjoints); // update buffers
 
     break;
 
   case CARTESIAN:
 
-    TheWam->RTgetTargetPosition(targetpos); 
+    TheWam->RTgetTargetPosition(targetpos);
     x = targetpos[0];
     y = targetpos[1];
+    z = targetpos[2];
 
     /* Compute desired positions */
-    wam_x_desired = WAM_X_CENTER - WAM_M_PER_PIX * (y-200); 
-    wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * (x-300); 
-   
+    wam_x_desired = WAM_X_CENTER - WAM_M_PER_PIX * (y-200);
+    wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * (x-300);
+    wam_z_desired = WAM_Z_CENTER - WAM_M_PER_PIX * (z-200);
+
+
     /* Bound desired positions (just in case) */
     if (wam_x_desired > WAM_X_CENTER + WAM_M_PER_PIX * 200)
       wam_x_desired = WAM_X_CENTER + WAM_M_PER_PIX * 200;
-   
+
     if (wam_x_desired < WAM_X_CENTER - WAM_M_PER_PIX * 200)
       wam_x_desired = WAM_X_CENTER - WAM_M_PER_PIX * 200;
-   
+
     if (wam_y_desired > WAM_Y_CENTER + WAM_M_PER_PIX * 300)
       wam_y_desired = WAM_Y_CENTER + WAM_M_PER_PIX * 300;
-      
+
     if (wam_y_desired < WAM_Y_CENTER - WAM_M_PER_PIX * 300)
       wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * 300;
-   
+
+    if (wam_z_desired > WAM_Z_CENTER + WAM_M_PER_PIX * 200)
+      wam_z_desired = WAM_Z_CENTER  + WAM_M_PER_PIX * 200;
+
+    if (wam_z_desired < WAM_Z_CENTER - WAM_M_PER_PIX * 200)
+      wam_z_desired = WAM_Z_CENTER  - WAM_M_PER_PIX * 200;
+
+
     /* Get present command positions */
     wam_x_present = ELEM(m_wam->HMref, 0, 3);
     wam_y_present = ELEM(m_wam->HMref, 1, 3);
-   
+    wam_z_present = ELEM(m_wam->HMref, 2, 3);
+
     /* Alter by 0.001 per loop */
     if (wam_x_desired > wam_x_present) wam_x_command = wam_x_present + WAM_M_PER_TICK;
     if (wam_x_desired < wam_x_present) wam_x_command = wam_x_present - WAM_M_PER_TICK;
     if (wam_y_desired > wam_y_present) wam_y_command = wam_y_present + WAM_M_PER_TICK;
     if (wam_y_desired < wam_y_present) wam_y_command = wam_y_present - WAM_M_PER_TICK;
+    if (wam_z_desired > wam_z_present) wam_z_command = wam_z_present + WAM_M_PER_TICK;
+    if (wam_z_desired < wam_z_present) wam_z_command = wam_z_present - WAM_M_PER_TICK;
 
 
     if(MoveIsDone(m_wam) || !TheWam->movingToPosCart){
-      TheWam->movingToPosCart = false;    
+      TheWam->movingToPosCart = false;
 
-      ELEM(m_wam->HMref,0,3) = wam_x_command; 
-      ELEM(m_wam->HMref,1,3) = wam_y_command; 
+      ELEM(m_wam->HMref,0,3) = wam_x_command;
+      ELEM(m_wam->HMref,1,3) = wam_y_command;
+      ELEM(m_wam->HMref,2,3) = wam_z_command;
     }
 
-    // update buffers 
+    // update buffers
     TheWam->RTupdateTargetPosition(targetpos);
     break;
 
@@ -274,14 +291,14 @@ int WAMcallback(struct btwam_struct *m_wam)
 /* Exit the realtime threads and close the system */
 void WamNode::cleanup()
 {
-  // shutdown realtime loop. 
+  // shutdown realtime loop.
   wam_thd->done = TRUE;
-  usleep(10000);   
+  usleep(10000);
   CloseSystem();
   rt_thd->done = TRUE;
-  
+
   //Remove wam.conf.flt/tmp files
-  system("rm -f wam.conf.flt wam.conf.tmp"); // eark .. 
+  system("rm -f wam.conf.flt wam.conf.tmp"); // eark ..
 
   // Free the vect_3 holding orientation.
   destroy_vn((vect_n **) &RXRYRZ);
@@ -305,7 +322,7 @@ void WamNode::pos2HM(const double *pos, const double *orient, vect_3 *Rxyz, matr
 
   ELEM(hm, 0, 3) = pos[0]; // Insert the X position
   ELEM(hm, 1, 3) = pos[1]; // Insert the Y position
-  ELEM(hm, 2, 3) = pos[2]; // Insert the Z position  
+  ELEM(hm, 2, 3) = pos[2]; // Insert the Z position
 }
 
 void WamNode::goToCart(const double * pos, const double * orient, bool wait)
@@ -316,7 +333,7 @@ void WamNode::goToCart(const double * pos, const double * orient, bool wait)
 
   // changes the behavior of the callback - disables setting Jref
   movingToPosCart = true;
-  
+
   // Convert from X, Y, Z, Rx, Ry, Rz to a homogeneous matrix
   matrix = new_mh();
   Rxyz = new_v3();
@@ -326,11 +343,11 @@ void WamNode::goToCart(const double * pos, const double * orient, bool wait)
   // go active
   for(int d=0;d<7;d++)
     active[d]=true;
-   
+
   TheWam->switchSpace(CARTESIAN);
-   
-  // In Cartesian space, MoveWAM() expects the full homogeneous matrix in vector format 
-  MoveWAM(wam, (vect_n*)matrix);    
+
+  // In Cartesian space, MoveWAM() expects the full homogeneous matrix in vector format
+  MoveWAM(wam, (vect_n*)matrix);
 
   if (wait)
     while (!MoveIsDone(wam)) usleep(10000);
@@ -341,15 +358,15 @@ void WamNode::goToCart(const double * pos, const double * orient, bool wait)
 }
 
 void WamNode::goTo(const double * pos, bool wait)
-{ 
+{
   for(int d=0;d<7;d++)
-    {	
-      moveToPos[d] = pos[d];	
+    {
+      moveToPos[d] = pos[d];
     }
   setTargetJoints(moveToPos);
   movingToPos = true;
   vect_n * vector2 = new_vn(wam->dof );
-	
+
   const_vn( vector2,moveToPos[0],moveToPos[1],moveToPos[2],moveToPos[3],moveToPos[4],moveToPos[5],moveToPos[6] );
 
   for(int d=0;d<7;d++)
@@ -359,9 +376,9 @@ void WamNode::goTo(const double * pos, bool wait)
 
   MoveWAM(wam, vector2);
   destroy_vn(&vector2);
- 
+
   // waiting 'til we reach the posture
-  if(wait) 
+  if(wait)
     while(!MoveIsDone(wam))
       usleep(10000);
 }
@@ -378,7 +395,7 @@ void WamNode::initMoves()
   moveToPos[4] = 0.3;
   moveToPos[5] = 0.3;
   moveToPos[6] = 0.3;
-	
+
   goTo(moveToPos);
 
 	//This should be home
@@ -399,7 +416,7 @@ void WamNode::initMoves()
   moveToPos[4] = 0.28729767170550075;
   moveToPos[5] = 0.374190856558136;
   moveToPos[6] = -0.91668911420833599;
-  
+
   goTo(moveToPos);
 
   // 0.6229972628252165, -0.056797047078617914, -0.015403360732277913, -2.5847001225425954, 0.025660708065062269, -3.0920239607278357
@@ -457,7 +474,7 @@ Mode WamNode::switchSpace(Mode nmode){
   }
 
   // Not sure if we need to call this again. Does not seem to hurt.
-  MoveSetup(wam, 0.5, 0.5 ); 
+  MoveSetup(wam, 0.5, 0.5 );
   return mode;
 }
 
@@ -527,25 +544,25 @@ bool WamNode::RTupdateTargetJoints(const double * target)
 {
   for(int i=0;i<7;i++)
     mPreviousTargetJoints[i] = target[i];
-  
+
   int stat = rt_mutex_acquire(&target_buffer_mutex, TM_NONBLOCK);
-  
-  if(stat==0) // we got the mutex !! 
+
+  if(stat==0) // we got the mutex !!
     {
       for(int i=0;i<7;i++)
-	mTargetJoints[i] = mPreviousTargetJoints[i]; 
+	mTargetJoints[i] = mPreviousTargetJoints[i];
       rt_mutex_release(&target_buffer_mutex);
     }
   return stat;
 }
-  
+
 bool WamNode::RTgetTargetJoints(double * target)
 {
-  // trying to get the mutex, but don't block if it's not 
+  // trying to get the mutex, but don't block if it's not
   // directly available, then return last read target position..
   int stat = rt_mutex_acquire(&target_buffer_mutex, TM_NONBLOCK);
-  
-  if(stat==0) // we got the mutex !! 
+
+  if(stat==0) // we got the mutex !!
     {
       for(int i=0;i<7;i++)
 	target[i] = mPreviousTargetJoints[i] = mTargetJoints[i];
@@ -560,7 +577,7 @@ bool WamNode::RTgetTargetJoints(double * target)
 }
 
 
-void WamNode::setTargetJoints(const double * target) 
+void WamNode::setTargetJoints(const double * target)
 {
   int stat = rt_mutex_acquire(&target_buffer_mutex,TM_INFINITE); // blocks until mutex is ok
 
@@ -572,15 +589,15 @@ void WamNode::setTargetJoints(const double * target)
 				}
       rt_mutex_release(&target_buffer_mutex);
     }
-  // else -> epic fail .. 
-} 
+  // else -> epic fail ..
+}
 
 
 void WamNode::setTargetPosition(const double *pos){
   int stat = rt_mutex_acquire(&target_buffer_mutex, TM_INFINITE);
   if (stat == 0){
 
-    for (int i=0;i<2;i++){
+    for (int i=0;i<3;i++){
       mTargetPos[i] = pos[i];
     }
 
@@ -589,14 +606,14 @@ void WamNode::setTargetPosition(const double *pos){
 }
 
 bool WamNode::RTupdateTargetPosition(const double *pos){
-  for (int i=0; i<2; i++){
+  for (int i=0; i<3; i++){
     mPreviousTargetPos[i] = pos[i];
   }
 
   int stat = rt_mutex_acquire(&target_buffer_mutex, TM_NONBLOCK);
- 
+
   if(stat==0){
-    for (int i=0; i<2; i++){
+    for (int i=0; i<3; i++){
       mTargetPos[i] = mPreviousTargetPos[i];
     }
 
@@ -606,18 +623,18 @@ bool WamNode::RTupdateTargetPosition(const double *pos){
 }
 
 bool WamNode::RTgetTargetPosition(double *pos){
-  // trying to get the mutex, but don't block if it's not 
+  // trying to get the mutex, but don't block if it's not
   // directly available, then return last read target position..
   int stat = rt_mutex_acquire(&target_buffer_mutex, TM_NONBLOCK);
-  
-  if(stat==0) {// we got the mutex !! 
-    for(int i=0; i<2; i++){
+
+  if(stat==0) {// we got the mutex !!
+    for(int i=0; i<3; i++){
       pos[i] = mPreviousTargetPos[i] = mTargetPos[i];
     }
     rt_mutex_release(&target_buffer_mutex);
   }
   else { // cant get instant access to the buffer
-    for(int i=0; i<2; i++){
+    for(int i=0; i<3; i++){
       pos[i] = mPreviousTargetPos[i];
     }
   }

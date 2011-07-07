@@ -13,13 +13,14 @@ import rospy
 import curses
 from wam_msgs.msg import CartesianTargets
 
-current_target = [300,200]
+current_target = [300,200,200]
 window = None
 
 def ct_callback(data):
     global current_target
     current_target[0] = data.pos[0]
     current_target[1] = data.pos[1]
+    current_target[2] = data.pos[2]
 
 def get_new_command():
     global current_target
@@ -35,6 +36,12 @@ def get_new_command():
     elif c == curses.KEY_DOWN:
         window.addstr(2,0,"KEY_DOWN  ")
         cmd[1] -= 10
+    elif c == ord('q'):
+        window.addstr(2,0,"KEY_Q     ")
+        cmd[2] -= 10
+    elif c == ord('a'):
+        window.addstr(2,0,"KEY_A     ")
+        cmd[2] += 10
     elif c == curses.KEY_LEFT:
         window.addstr(2,0,"KEY_LEFT  ")
         cmd[0] += 10
@@ -61,7 +68,7 @@ def teleop():
 
     # init simple curses interface
     window = curses.initscr()
-    window.addstr("Use the arrow keys to move the robot tool and (Ctrl-C) to exit.")
+    window.addstr("Use the arrow keys to move the robot tool l/r/f/b and q/a to move the robot up at down. Ctrl-C to exit.")
     window.keypad(1)
     curses.noecho()
     curses.cbreak()
@@ -74,6 +81,6 @@ def teleop():
         pub.publish(CartesianTargets(cmd))
         rospy.sleep(0.1)
 
-    
+
 if __name__ == '__main__':
     teleop()
