@@ -38,10 +38,6 @@ const double homePosition[] = { 0, -2, 0.0, 3.14, 0 , 0 , 0}; // "home" posture
 enum Mode { JOINT = 0, CARTESIAN };
 
 #define Ts (0.002) // tick tock period ..
-#define WAM_X_CENTER (0.50)
-#define WAM_Y_CENTER (0.00)
-#define WAM_Z_CENTER (0.00)
-#define WAM_M_PER_PIX (0.001)
 #define WAM_M_PER_TICK (0.0002)
 
 class WamNode

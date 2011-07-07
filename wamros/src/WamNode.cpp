@@ -159,9 +159,9 @@ void WamNode::init(std::string &conf)
   // }
 
   double pos[3];
-  pos[0] = 200;
-  pos[1] = 200;
-  pos[2] = 200;
+  pos[0] = 0.5;
+  pos[1] = 0.0;
+  pos[2] = 0.0;
 
   setTargetPosition(pos);
 
@@ -229,37 +229,16 @@ int WAMcallback(struct btwam_struct *m_wam)
     z = targetpos[2];
 
     /* Compute desired positions */
-    wam_x_desired = WAM_X_CENTER - WAM_M_PER_PIX * (x-200);
-    wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * (y-200);
-    wam_z_desired = WAM_Z_CENTER - WAM_M_PER_PIX * (z-200);
-
-
-    /* Bound desired positions (just in case) */
-    if (wam_x_desired > WAM_X_CENTER + WAM_M_PER_PIX * 200)
-      wam_x_desired = WAM_X_CENTER + WAM_M_PER_PIX * 200;
-
-    if (wam_x_desired < WAM_X_CENTER - WAM_M_PER_PIX * 200)
-      wam_x_desired = WAM_X_CENTER - WAM_M_PER_PIX * 200;
-
-    if (wam_y_desired > WAM_Y_CENTER + WAM_M_PER_PIX * 200)
-      wam_y_desired = WAM_Y_CENTER + WAM_M_PER_PIX * 200;
-
-    if (wam_y_desired < WAM_Y_CENTER - WAM_M_PER_PIX * 200)
-      wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * 200;
-
-    if (wam_z_desired > WAM_Z_CENTER + WAM_M_PER_PIX * 200)
-      wam_z_desired = WAM_Z_CENTER  + WAM_M_PER_PIX * 200;
-
-    if (wam_z_desired < WAM_Z_CENTER - WAM_M_PER_PIX * 200)
-      wam_z_desired = WAM_Z_CENTER  - WAM_M_PER_PIX * 200;
-
+    wam_x_desired = x;
+    wam_y_desired = y;
+    wam_z_desired = z;
 
     /* Get present command positions */
     wam_x_present = ELEM(m_wam->HMref, 0, 3);
     wam_y_present = ELEM(m_wam->HMref, 1, 3);
     wam_z_present = ELEM(m_wam->HMref, 2, 3);
 
-    /* Alter by 0.001 per loop */
+    /* Alter by 0.0002 per loop */
     if (wam_x_desired > wam_x_present) wam_x_command = wam_x_present + WAM_M_PER_TICK;
     if (wam_x_desired < wam_x_present) wam_x_command = wam_x_present - WAM_M_PER_TICK;
     if (wam_y_desired > wam_y_present) wam_y_command = wam_y_present + WAM_M_PER_TICK;
@@ -440,6 +419,8 @@ void WamNode::initMoves()
   orient[1] = 0.037;
   orient[2] = -3.10;
   //goToCart(pos, orient, true);
+
+  //setTargetPosition(pos);
 
 }
 

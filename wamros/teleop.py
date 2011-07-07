@@ -32,22 +32,22 @@ def get_new_command():
 
     if c == curses.KEY_UP:
         window.addstr(2,0,"KEY_UP    ")
-        cmd[1] += 10
+        cmd[1] += 0.01
     elif c == curses.KEY_DOWN:
         window.addstr(2,0,"KEY_DOWN  ")
-        cmd[1] -= 10
+        cmd[1] -= 0.01
     elif c == ord('q'):
         window.addstr(2,0,"KEY_Q     ")
-        cmd[2] -= 10
+        cmd[2] -= 0.01
     elif c == ord('a'):
         window.addstr(2,0,"KEY_A     ")
-        cmd[2] += 10
+        cmd[2] += 0.01
     elif c == curses.KEY_LEFT:
         window.addstr(2,0,"KEY_LEFT  ")
-        cmd[0] += 10
+        cmd[0] += 0.01
     elif c == curses.KEY_RIGHT:
         window.addstr(2,0,"KEY_RIGHT ")
-        cmd[0] -= 10
+        cmd[0] -= 0.01
 
 
     return cmd

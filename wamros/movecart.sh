@@ -1,7 +1,3 @@
 #!/bin/bash -x
 
-
-# euler: [0.76774070787886262, 1.3682232385640798, 0.60698087721885574]
-# position: [-0.12877713171919572, 0.038931627533432552, 0.39680145635663622]
-
-rosservice call /wam/moveToCart "{position: [$1, $2, $3]}" "{euler: [$4, $5, $6]}"
+rosservice call /wam/moveToCart "{cart: {position: [$1, $2, $3], euler: [$4, $5, $6]}}"
