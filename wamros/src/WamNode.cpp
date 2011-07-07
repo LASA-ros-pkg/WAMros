@@ -158,9 +158,10 @@ void WamNode::init(std::string &conf)
   //   active[d]=true;
   // }
 
-  double pos[2];
-  pos[0] = 300;
+  double pos[3];
+  pos[0] = 200;
   pos[1] = 200;
+  pos[2] = 200;
 
   setTargetPosition(pos);
 
@@ -228,8 +229,8 @@ int WAMcallback(struct btwam_struct *m_wam)
     z = targetpos[2];
 
     /* Compute desired positions */
-    wam_x_desired = WAM_X_CENTER - WAM_M_PER_PIX * (y-200);
-    wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * (x-300);
+    wam_x_desired = WAM_X_CENTER - WAM_M_PER_PIX * (x-200);
+    wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * (y-200);
     wam_z_desired = WAM_Z_CENTER - WAM_M_PER_PIX * (z-200);
 
 
@@ -240,11 +241,11 @@ int WAMcallback(struct btwam_struct *m_wam)
     if (wam_x_desired < WAM_X_CENTER - WAM_M_PER_PIX * 200)
       wam_x_desired = WAM_X_CENTER - WAM_M_PER_PIX * 200;
 
-    if (wam_y_desired > WAM_Y_CENTER + WAM_M_PER_PIX * 300)
-      wam_y_desired = WAM_Y_CENTER + WAM_M_PER_PIX * 300;
+    if (wam_y_desired > WAM_Y_CENTER + WAM_M_PER_PIX * 200)
+      wam_y_desired = WAM_Y_CENTER + WAM_M_PER_PIX * 200;
 
-    if (wam_y_desired < WAM_Y_CENTER - WAM_M_PER_PIX * 300)
-      wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * 300;
+    if (wam_y_desired < WAM_Y_CENTER - WAM_M_PER_PIX * 200)
+      wam_y_desired = WAM_Y_CENTER - WAM_M_PER_PIX * 200;
 
     if (wam_z_desired > WAM_Z_CENTER + WAM_M_PER_PIX * 200)
       wam_z_desired = WAM_Z_CENTER  + WAM_M_PER_PIX * 200;
@@ -430,7 +431,15 @@ void WamNode::initMoves()
   orient[0] = -2.5847001225425954;
   orient[1] = 0.025660708065062269;
   orient[2] = -3.0920239607278357;
-  goToCart(pos, orient);
+  goToCart(pos, orient, true);
+
+  pos[0] = 0.5;
+  pos[1] = 0.0;
+  pos[2] = 0.2;
+  orient[0] = -2.58;
+  orient[1] = 0.037;
+  orient[2] = -3.10;
+  //goToCart(pos, orient, true);
 
 }
 
