@@ -36,6 +36,7 @@ const double homePosition[] = { 0, -2, 0.0, 3.14, 0 , 0 , 0}; // "home" posture
 
 // determine whether joint control is governed by the joint or cartesian topics
 enum Mode { JOINT = 0, CARTESIAN };
+enum State {IDLE = 0, TRQ, POS, TRJ}; 
 
 #define Ts (0.002) // tick tock period ..
 #define WAM_M_PER_TICK (0.0002)
@@ -53,13 +54,18 @@ protected :
   double mPreviousTargetJoints[7]; // joints sent to robots
                                    // this one is directly written by rt loop
 
-  double mTargetPos[3];
-  double mPreviousTargetPos[3];
+  matr_h *mTargetPos;
+  matr_h *mPreviousTargetPos;
+  //double mTargetPos[3];
+  //double mPreviousTargetPos[3];
 
   // nobody else should be able to update mode outside of switchSpace
   Mode mode;
 
 public :
+
+  matr_h *callback_pos;
+
 
   // sad part : these should be protected / private , but
   // needs to be accessible from thread and wam callback.
@@ -82,7 +88,7 @@ public :
 
   int  startDone; // is the wam started ?
 
-  bool active[7];   // Should the joints be active or passive?
+  bool joint_active[7];   // Should the joints be active or passive?
   //  double m_Jref[7]; // read/write joints buffer
 
   double m_Jtrq[7]; // read torques buffer
@@ -124,8 +130,13 @@ public :
   int getZeroed(); // debug stuff
   Mode getCurrentMode(); // Get the current mode (cartesian or joints).
   Mode switchSpace(Mode); // Toggle between joint and cartesian spaces.
-  void pos2HM(const double *, const double *, vect_3 *, matr_h *);
-  void hm2Pos(double *, double *, vect_3 *, matr_h *);
+  void pos2HM(const double *, const double *, matr_h *);
+  void hm2POS(const matr_h *, double *, double *);
+
+  Mode controller();
+  State state();
+  void idle();
+  void active();
 
   void goHome()
   {
@@ -143,10 +154,12 @@ public :
 
   void setTargetJoints(const double * joints);
 
-  bool RTgetTargetPosition(double *pos);
-  bool RTupdateTargetPosition(const double *pos);
+  bool RTgetTargetPosition(matr_h *pos);
+  bool RTupdateTargetPosition(const matr_h *pos);
 
   void setTargetPosition(const double *pos);
+  void setTargetPosition(const double *pos, const double *orient);
+  void setTargetPosition(const matr_h *pos);
 
   virtual ~WamNode(){};
 };

@@ -25,9 +25,14 @@
 #include <wam_msgs/SwitchModes.h>
 #include <wam_msgs/WamStatus.h>
 #include <wam_msgs/CartesianCoordinates.h>
-#include <wam_msgs/CartesianTargets.h>
 #include <wam_msgs/HomogeneousMatrix.h>
 #include "WamNode.hpp"
+
+// Note: A previous version of this code had some callback timing
+// stuff. The frequency of callbacks to topics can be determined via
+// other methods in ROS and the timings are not needed to determine
+// the idle or running state of the robot (we use btclient states for
+// that).
 
 //Useful macros
 #define MIN(x,y) (x<y ? x : y)
@@ -42,12 +47,6 @@ WamNode * MyWam = NULL;
 std::string wamconf; // Store the conf file here.
 bool doinit = false; // Do init motion on startup.
 
-unsigned long last_command_us=0; // when was last joint command
-				 // received (in microsecond since
-				 // beginning) , 4 bytes integer =>
-				 // more that 4.10^3 second => more
-				 // than one hour
-
 //Callbacks - real quick, major processing done elsewhere
 
 
@@ -58,15 +57,27 @@ bool goHomeSRV(std_srvs::Empty::Request   &req, std_srvs::Empty::Response &res )
   MyWam->goHome();
   return true;
 }
+
+bool activeSRV(std_srvs::Empty::Request   &req, std_srvs::Empty::Response &res )
+{
+  MyWam->active();
+  return true;
+}
+bool idleSRV(std_srvs::Empty::Request   &req, std_srvs::Empty::Response &res )
+{
+  MyWam->idle();
+  return true;
+}
+
 //////////////////////////////////////////////////////////////////////////////////
 //This service will (de)activate the single joints.
-bool activeSRV(wam_msgs::ActivePassive::Request  &req,
+bool joint_activeSRV(wam_msgs::ActivePassive::Request  &req,
 	       wam_msgs::ActivePassive::Response &res )
 {
   if(req.active.size() != 7)
     return false;
   for(int d=0;d<7;d++)
-    MyWam->active[d]=req.active[d];
+    MyWam->joint_active[d]=req.active[d];
   return true;
 }
 
@@ -116,37 +127,19 @@ bool moveToCartSRV(wam_msgs::MoveToCart::Request &req, wam_msgs::MoveToCart::Res
 
 void Jref_callback(const wam_msgs::JointAnglesConstPtr& msg)
 {
-  if(!MyWam->movingToPosCart and !MyWam->movingToPos and msg->radians.size()==7) // checking if we aren't in goto mode
-    {
-       struct timespec tv;
-       // RT timer
-       // on a standart linux this has a micro second resolution.
-
-       clock_gettime(CLOCK_MONOTONIC,&tv);
-       last_command_us =  tv.tv_nsec / 1000 + tv.tv_sec * 1000000;
-       MyWam->setTargetJoints(&msg->radians[0]);
-    }
+  if (MyWam->state() == POS and MyWam->controller() == JOINT){ // POS mode and JSC loaded!
+    MyWam->setTargetJoints(&msg->radians[0]);
+  }
 }
 
-void HMref_callback(const wam_msgs::CartesianTargetsConstPtr &msg){
-  double *tp,*hmref, *hmpos;
-
-  if (!MyWam->movingToPosCart and !MyWam->movingToPos and msg->pos.size() == 3){
-    struct timespec tv;
-    clock_gettime(CLOCK_MONOTONIC, &tv);
-    last_command_us = tv.tv_nsec / 1000 + tv.tv_sec * 1000000;
+void HMref_callback(const wam_msgs::CartesianCoordinatesConstPtr &msg){
+  if (MyWam->state() == POS and MyWam->controller() == CARTESIAN){
 
     ROS_DEBUG("Calling HMref_callback");
-    ROS_DEBUG("position received: %f %f %f", msg->pos[0], msg->pos[1], msg->pos[2]);
+    ROS_DEBUG("position received: %f %f %f", msg->position[0], msg->position[1], msg->position[2]);
+    ROS_DEBUG("orient received: %f %f %f", msg->euler[0], msg->euler[1], msg->euler[2]);
 
-    MyWam->setTargetPosition(&msg->pos[0]);
-
-    hmref = MyWam->getCartesianCommand();
-    hmpos = MyWam->getHomogeneousMatrix();
-    tp = MyWam->getCartesianTargets();
-    ROS_DEBUG("target position: %f %f %f", tp[0], tp[1], tp[2]);
-    ROS_DEBUG("hmref position: %f %f %f", hmref[3], hmref[7], hmref[11]);
-    ROS_DEBUG("hmpos position: %f %f %f", hmpos[3], hmpos[7], hmpos[11]);
+    MyWam->setTargetPosition(&msg->position[0], &msg->euler[0]);
   }
 }
 
@@ -160,7 +153,7 @@ int main(int argc, char **argv)
 
   //Start motors limp
   for(int d=0;d<7;d++)
-    MyWam->active[d]=false;
+    MyWam->joint_active[d]=false;
 
   //Start up ROS
   ros::init(argc, argv, "wamros_node");
@@ -178,8 +171,9 @@ int main(int argc, char **argv)
     MyWam->initMoves();  	// do the nice motion at startup.
 
   ros::Publisher wam_CC_pub = n.advertise<wam_msgs::CartesianCoordinates>("cartesian_coordinates", 1);
-  ros::Publisher wam_HM_pub = n.advertise<wam_msgs::HomogeneousMatrix>("homogeneous_matrix", 1);
-  ros::Publisher wam_CT_pub = n.advertise<wam_msgs::CartesianTargets>("cartesian_targets", 1);
+  ros::Publisher wam_HMpos_pub = n.advertise<wam_msgs::HomogeneousMatrix>("hmpos", 1);
+  ros::Publisher wam_HMref_pub = n.advertise<wam_msgs::HomogeneousMatrix>("hmref", 1);
+
 
   ros::Publisher wam_JA_pub = n.advertise<wam_msgs::JointAngles>("joints_sensed", 1);
   ros::Publisher wam_ST_pub = n.advertise<wam_msgs::WamStatus>("status",1);
@@ -189,17 +183,21 @@ int main(int argc, char **argv)
 
   ros::ServiceServer switch_mode_srv = n.advertiseService("switchMode", switchModeSRV);
 
-  ros::ServiceServer active_service = n.advertiseService("active_passive", activeSRV);
+  ros::ServiceServer active_service = n.advertiseService("active_passive", joint_activeSRV);
   ros::ServiceServer movetopos_srv = n.advertiseService("moveToPos",moveToSRV);
   ros::ServiceServer goHome_srv = n.advertiseService("goHome",goHomeSRV);
   ros::ServiceServer movetocart_srv = n.advertiseService("moveToCart", moveToCartSRV);
+
+  ros::ServiceServer idle_srv = n.advertiseService("idle",idleSRV);
+  ros::ServiceServer active_srv = n.advertiseService("active",activeSRV);
 
   wam_msgs::JointAngles currentJA;
   currentJA.radians.resize(7);
 
   wam_msgs::CartesianCoordinates currentCC;
-  wam_msgs::CartesianTargets currentCT;
+
   wam_msgs::HomogeneousMatrix currentHM;
+  wam_msgs::HomogeneousMatrix currentHMref;
 
   wam_msgs::WamStatus currentStatus;
 
@@ -216,15 +214,9 @@ int main(int argc, char **argv)
       currentCC.position[i] = cp[i];
     }
 
-
     double * co = MyWam->getCartesianOrientation();
     for (int i=0;i<3;i++){
       currentCC.euler[i] = co[i];
-    }
-
-    double * ct = MyWam->getCartesianTargets();
-    for (int i = 0; i<3; i++){
-      currentCT.pos[i] = ct[i];
     }
 
     double * hm = MyWam->getHomogeneousMatrix();
@@ -232,23 +224,21 @@ int main(int argc, char **argv)
       currentHM.element[i] = hm[i];
     }
 
-    if( MyWam->movingToPos || MyWam->movingToPosCart)
-      currentStatus.status = wam_msgs::WamStatus::MOVING;
-    else
-      {
-				struct timespec tv;
-				clock_gettime(CLOCK_MONOTONIC,&tv);
-				unsigned long current_time_ = tv.tv_nsec / 1000 + tv.tv_sec * 1000000;
-				if( (current_time_ - last_command_us  ) < 1e5) // 100 ms idle time ?
-					currentStatus.status = wam_msgs::WamStatus::COMMAND;
-				else
-					currentStatus.status = wam_msgs::WamStatus::IDLE;
-      }
+    hm = MyWam->getCartesianCommand();
+    for (int i = 0; i< 16; i++){
+      currentHMref.element[i] = hm[i];
+    }
+
+    Mode cntrl = MyWam->controller();
+    State stat = MyWam->state();
+
+    currentStatus.status = (int) stat;
+    currentStatus.controller = (int) cntrl;
 
     // Cartesian coordinate info
     wam_CC_pub.publish(currentCC);
-    wam_HM_pub.publish(currentHM);
-    wam_CT_pub.publish(currentCT);
+    wam_HMpos_pub.publish(currentHM);
+    wam_HMref_pub.publish(currentHMref);
 
     wam_JA_pub.publish(currentJA);
     wam_ST_pub.publish(currentStatus);

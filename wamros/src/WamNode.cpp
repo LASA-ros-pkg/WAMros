@@ -28,6 +28,9 @@ WamNode::WamNode()
   TheWam = this;
   btrt_mutex_create(&target_buffer_mutex);
 
+  callback_pos = new_mh();
+  mTargetPos = new_mh();
+  mPreviousTargetPos = new_mh();
   RXRYRZ = new_v3();
 }
 
@@ -151,21 +154,6 @@ void WamNode::init(std::string &conf)
   SetGravityUsingCalibrated(wam,1);
   SetGravityComp(wam, 1.0);
 
-  //Start where we are and locked
-  // for(int d=0;d<7;d++){
-  //   wam->Jref->q[d] = wam->Jpos->q[d]; // reading actual joint position
-  //   setTargetJoints(wam->Jpos->q);
-  //   active[d]=true;
-  // }
-
-  double pos[3];
-  pos[0] = 0.5;
-  pos[1] = 0.0;
-  pos[2] = 0.0;
-
-  setTargetPosition(pos);
-
-
   //Do all the wam stuff before ROS kicks in
   TheWam->switchSpace(CARTESIAN);
 }
@@ -174,33 +162,23 @@ void WamNode::init(std::string &conf)
 /////////////////////////////////////////////////////////////////////////////////////////
 int WAMcallback(struct btwam_struct *m_wam)
 {
-  double wam_x_desired;
-  double wam_y_desired;
-  double wam_z_desired;
-
-  double wam_x_present;
-  double wam_y_present;
-  double wam_z_present;
-
-  double wam_x_command;
-  double wam_y_command;
-  double wam_z_command;
-  double x,y,z;
-  double targetpos[3];
-
   double targetjoints[7];
 
   switch(TheWam->getCurrentMode()){
+
   case JOINT:
 
     // reading joints angle/torques and store them
     // so that by default we reuse the last sent read joints, -> not moving
     TheWam->RTgetTargetJoints(targetjoints);
 
+    // This is per-joint idle magic. A better method of
+    // initializing overall passive behavior is to call idle().
+
     for(int d=0;d<7;d++){
       TheWam->m_Jtrq[d] = m_wam->Jtrq->q[d]; //Record what control would say
 
-      if(!TheWam->active[d]){  //We're passive
+      if(!TheWam->joint_active[d]){  //We're passive
 	m_wam->Jtrq->q[d]=0;    //no torque (other than gravity comp)
 	targetjoints[d] = m_wam->Jpos->q[d]; // and stay there !
       }
@@ -209,12 +187,14 @@ int WAMcallback(struct btwam_struct *m_wam)
     // If any of the wam move services are called then Jref should not
     // be set during callbacks.
 
-    if(MoveIsDone(m_wam) || !TheWam->movingToPos){
-      TheWam->movingToPos = false;
-
+    if(MoveIsDone(m_wam) and TheWam->state() == POS){
       for(int d=0;d<7;d++){
 	m_wam->Jref->q[d] = targetjoints[d];
       }
+    } else {
+      // update target joints since we are moving using MoveWam or IDLE
+      for (int d = 0; d<7; d++)
+	targetjoints[d] = m_wam->Jpos->q[d];
     }
 
     TheWam->RTupdateTargetJoints(targetjoints); // update buffers
@@ -223,40 +203,20 @@ int WAMcallback(struct btwam_struct *m_wam)
 
   case CARTESIAN:
 
-    TheWam->RTgetTargetPosition(targetpos);
-    x = targetpos[0];
-    y = targetpos[1];
-    z = targetpos[2];
+    TheWam->RTgetTargetPosition(TheWam->callback_pos);
 
-    /* Compute desired positions */
-    wam_x_desired = x;
-    wam_y_desired = y;
-    wam_z_desired = z;
+    if(MoveIsDone(m_wam) and TheWam->state() == POS){
 
-    /* Get present command positions */
-    wam_x_present = ELEM(m_wam->HMref, 0, 3);
-    wam_y_present = ELEM(m_wam->HMref, 1, 3);
-    wam_z_present = ELEM(m_wam->HMref, 2, 3);
+      // update position and orientation in CARTESIAN mode
+      set_vn((vect_n *)m_wam->HMref, (vect_n *)TheWam->callback_pos);
 
-    /* Alter by 0.0002 per loop */
-    if (wam_x_desired > wam_x_present) wam_x_command = wam_x_present + WAM_M_PER_TICK;
-    if (wam_x_desired < wam_x_present) wam_x_command = wam_x_present - WAM_M_PER_TICK;
-    if (wam_y_desired > wam_y_present) wam_y_command = wam_y_present + WAM_M_PER_TICK;
-    if (wam_y_desired < wam_y_present) wam_y_command = wam_y_present - WAM_M_PER_TICK;
-    if (wam_z_desired > wam_z_present) wam_z_command = wam_z_present + WAM_M_PER_TICK;
-    if (wam_z_desired < wam_z_present) wam_z_command = wam_z_present - WAM_M_PER_TICK;
-
-
-    if(MoveIsDone(m_wam) || !TheWam->movingToPosCart){
-      TheWam->movingToPosCart = false;
-
-      ELEM(m_wam->HMref,0,3) = wam_x_command;
-      ELEM(m_wam->HMref,1,3) = wam_y_command;
-      ELEM(m_wam->HMref,2,3) = wam_z_command;
+    } else {
+      // The wam is moving using MoveWAM or IDLE.
+      set_vn((vect_n *) TheWam->callback_pos, (vect_n *) m_wam->HMpos);
     }
 
     // update buffers
-    TheWam->RTupdateTargetPosition(targetpos);
+    TheWam->RTupdateTargetPosition(TheWam->callback_pos);
     break;
 
   default:
@@ -282,59 +242,64 @@ void WamNode::cleanup()
 
   // Free the vect_3 holding orientation.
   destroy_vn((vect_n **) &RXRYRZ);
+  destroy_vn((vect_n **) &mTargetPos);
+  destroy_vn((vect_n **) &mPreviousTargetPos);
+  destroy_vn((vect_n **) &callback_pos);
+
 }
 
-void WamNode::hm2Pos(double *pos, double *orient, vect_3 *Rxyz, matr_h *hm){
-    RtoXYZf_m3((matr_3*)hm, Rxyz);
+void WamNode::hm2POS(const matr_h *hm, double *pos, double *orient){
+  vect_3 *Rxyz;
+  Rxyz = new_v3();
+  RtoXYZf_m3((matr_3*)hm, Rxyz);
 
-    orient[0] = Rxyz->q[0];
-    orient[1] = Rxyz->q[1];
-    orient[2] = Rxyz->q[2];
+  orient[0] = Rxyz->q[0];
+  orient[1] = Rxyz->q[1];
+  orient[2] = Rxyz->q[2];
 
-    pos[0] = ELEM(hm, 0, 3);
-    pos[1] = ELEM(hm, 1, 3);
-    pos[2] = ELEM(hm, 2, 3);
+  pos[0] = ELEM(hm, 0, 3);
+  pos[1] = ELEM(hm, 1, 3);
+  pos[2] = ELEM(hm, 2, 3);
+
+  destroy_vn((vect_n **) &Rxyz);
 }
 
-void WamNode::pos2HM(const double *pos, const double *orient, vect_3 *Rxyz, matr_h *hm){
+void WamNode::pos2HM(const double *pos, const double *orient, matr_h *hm){
+  vect_3 *Rxyz;
+  Rxyz = new_v3();
+
   const_v3(Rxyz, orient[0], orient[1], orient[2]);
   XYZftoR_m3((matr_3*)hm, Rxyz); // Convert from Rxyz to R[3x3]
 
   ELEM(hm, 0, 3) = pos[0]; // Insert the X position
   ELEM(hm, 1, 3) = pos[1]; // Insert the Y position
   ELEM(hm, 2, 3) = pos[2]; // Insert the Z position
+
+  destroy_vn((vect_n **) &Rxyz);
 }
 
 void WamNode::goToCart(const double * pos, const double * orient, bool wait)
 {
 
   matr_h *matrix;
-  vect_3 *Rxyz;
 
-  // changes the behavior of the callback - disables setting Jref
   movingToPosCart = true;
 
   // Convert from X, Y, Z, Rx, Ry, Rz to a homogeneous matrix
   matrix = new_mh();
-  Rxyz = new_v3();
 
-  TheWam->pos2HM(pos,orient,Rxyz,matrix);
-
-  // go active
-  for(int d=0;d<7;d++)
-    active[d]=true;
+  TheWam->pos2HM(pos,orient,matrix);
 
   TheWam->switchSpace(CARTESIAN);
 
   // In Cartesian space, MoveWAM() expects the full homogeneous matrix in vector format
+  MoveSetup(wam, 0.5, 0.5 );
   MoveWAM(wam, (vect_n*)matrix);
 
   if (wait)
     while (!MoveIsDone(wam)) usleep(10000);
 
   destroy_mn((matr_mn **)&matrix);
-  destroy_vn((vect_n **)&Rxyz);
-
 }
 
 void WamNode::goTo(const double * pos, bool wait)
@@ -343,17 +308,18 @@ void WamNode::goTo(const double * pos, bool wait)
     {
       moveToPos[d] = pos[d];
     }
-  setTargetJoints(moveToPos);
+
   movingToPos = true;
   vect_n * vector2 = new_vn(wam->dof );
 
   const_vn( vector2,moveToPos[0],moveToPos[1],moveToPos[2],moveToPos[3],moveToPos[4],moveToPos[5],moveToPos[6] );
 
   for(int d=0;d<7;d++)
-    active[d]=true;
+    joint_active[d]=true;
 
   TheWam->switchSpace(JOINT);
 
+  MoveSetup(wam, 0.5, 0.5 );
   MoveWAM(wam, vector2);
   destroy_vn(&vector2);
 
@@ -412,16 +378,6 @@ void WamNode::initMoves()
   orient[2] = -3.0920239607278357;
   goToCart(pos, orient, true);
 
-  pos[0] = 0.5;
-  pos[1] = 0.0;
-  pos[2] = 0.2;
-  orient[0] = -2.58;
-  orient[1] = 0.037;
-  orient[2] = -3.10;
-  //goToCart(pos, orient, true);
-
-  //setTargetPosition(pos);
-
 }
 
 Mode WamNode::getCurrentMode(){
@@ -446,14 +402,25 @@ int WamNode::getActiveSC(){
 
 Mode WamNode::switchSpace(Mode nmode){
 
+  // This will set the target joint or positions to the current joint
+  // or positions. After the switch the controller will be
+  // idle. MoveWam or activate will start the corresponding the
+  // controller.
+
   switch(nmode){
 
   case CARTESIAN:
+
+    setTargetPosition(wam->HMpos);
+
     SetCartesianSpace(wam);
     mode = CARTESIAN;
    break;
 
   case JOINT:
+
+    setTargetJoints(wam->Jpos->q);
+
     SetJointSpace(wam);
     mode = JOINT;
     break;
@@ -464,7 +431,6 @@ Mode WamNode::switchSpace(Mode nmode){
   }
 
   // Not sure if we need to call this again. Does not seem to hurt.
-  MoveSetup(wam, 0.5, 0.5 );
   return mode;
 }
 
@@ -527,7 +493,34 @@ double * WamNode::getCartesianCommand(){
 }
 
 double * WamNode::getCartesianTargets(){
-  return mTargetPos;
+  return mTargetPos->q;
+}
+
+Mode WamNode::controller(){
+  // what controller is active?
+
+  if (wam->active_sc == &wam->Jsc){
+    return JOINT;
+  } else {
+    return CARTESIAN;
+  }
+}
+
+State WamNode::state(){
+  // from btclient code
+  // idle : 0
+  // torque : 1
+  // pos : 2
+  // trj : 3
+  return (State) getmode_bts(wam->active_sc);
+}
+
+void WamNode::active(){
+  setmode_bts(wam->active_sc, SCMODE_POS);
+}
+
+void WamNode::idle(){
+  setmode_bts(wam->active_sc, SCMODE_IDLE);
 }
 
 bool WamNode::RTupdateTargetJoints(const double * target)
@@ -571,15 +564,24 @@ void WamNode::setTargetJoints(const double * target)
 {
   int stat = rt_mutex_acquire(&target_buffer_mutex,TM_INFINITE); // blocks until mutex is ok
 
-  if(stat==0)
-    {
-      for (int i = 0; i < 7; i++)
-				{
-					mTargetJoints[i] = target[i];
-				}
-      rt_mutex_release(&target_buffer_mutex);
+  if(stat==0){
+    for (int i = 0; i < 7; i++){
+      mTargetJoints[i] = target[i];
     }
+    rt_mutex_release(&target_buffer_mutex);
+  }
   // else -> epic fail ..
+}
+
+
+void WamNode::setTargetPosition(const matr_h *pos){
+  int stat = rt_mutex_acquire(&target_buffer_mutex, TM_INFINITE);
+  if (stat == 0){
+
+    set_vn((vect_n *)mTargetPos, (vect_n *)pos);
+
+    rt_mutex_release(&target_buffer_mutex);
+  }
 }
 
 
@@ -587,46 +589,57 @@ void WamNode::setTargetPosition(const double *pos){
   int stat = rt_mutex_acquire(&target_buffer_mutex, TM_INFINITE);
   if (stat == 0){
 
-    for (int i=0;i<3;i++){
-      mTargetPos[i] = pos[i];
-    }
+    ELEM(mTargetPos,0,3) = pos[0];
+    ELEM(mTargetPos,1,3) = pos[1];
+    ELEM(mTargetPos,2,3) = pos[2];
 
     rt_mutex_release(&target_buffer_mutex);
   }
 }
 
-bool WamNode::RTupdateTargetPosition(const double *pos){
-  for (int i=0; i<3; i++){
-    mPreviousTargetPos[i] = pos[i];
+void WamNode::setTargetPosition(const double *pos, const double *orient){
+  matr_h *hm;
+  hm = new_mh();
+  pos2HM(pos, orient, hm);
+
+  int stat = rt_mutex_acquire(&target_buffer_mutex, TM_INFINITE);
+  if (stat == 0){
+
+    set_vn((vect_n *) mTargetPos, (vect_n *) hm);
+
+    rt_mutex_release(&target_buffer_mutex);
   }
+  destroy_vn((vect_n **) &hm);
+}
+
+bool WamNode::RTupdateTargetPosition(const matr_h *pos){
+
+  set_vn((vect_n *) mPreviousTargetPos, (vect_n *) pos);
 
   int stat = rt_mutex_acquire(&target_buffer_mutex, TM_NONBLOCK);
 
+
   if(stat==0){
-    for (int i=0; i<3; i++){
-      mTargetPos[i] = mPreviousTargetPos[i];
-    }
+    set_vn((vect_n *) mTargetPos, (vect_n *) mPreviousTargetPos);
 
     rt_mutex_release(&target_buffer_mutex);
   }
   return stat;
 }
 
-bool WamNode::RTgetTargetPosition(double *pos){
+bool WamNode::RTgetTargetPosition(matr_h *pos){
   // trying to get the mutex, but don't block if it's not
   // directly available, then return last read target position..
   int stat = rt_mutex_acquire(&target_buffer_mutex, TM_NONBLOCK);
 
   if(stat==0) {// we got the mutex !!
-    for(int i=0; i<3; i++){
-      pos[i] = mPreviousTargetPos[i] = mTargetPos[i];
-    }
-    rt_mutex_release(&target_buffer_mutex);
+    set_vn((vect_n *) mPreviousTargetPos, (vect_n *) mTargetPos);
+    set_vn((vect_n *) pos, (vect_n *) mTargetPos);
+
+   rt_mutex_release(&target_buffer_mutex);
   }
   else { // cant get instant access to the buffer
-    for(int i=0; i<3; i++){
-      pos[i] = mPreviousTargetPos[i];
-    }
+    set_vn((vect_n *) pos, (vect_n *) mPreviousTargetPos);
   }
 
   return stat != 0;
