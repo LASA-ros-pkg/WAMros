@@ -5,28 +5,38 @@ arm. wamros provides the following services:
 
 /wam/active_passive
 /wam/goHome
-/wam/moveToPos 
+/wam/moveToPos
+/wam/moveToCart -- move tool to a cartesian coordinate
+/wam/switchMode -- switches between joint/cartesian control space
+/wam/idle -- idles the robot
+/wam/active -- activates the current control
+
 
 wamros subscribes to the following topics:
 
 /wam/joints_command
+/wam/cartesian_command -- in internal units
 
 wamros produces for the following topics:
 
 /wam/joints_sensed
 /wam/status
+/wam/cartesian_coordinates -- in meters
+/wam/homogeneous_matrix -- different representation of cartesian coordinates
+/wam/hmpos -- internal btclient data
+/wam/hmref -- internal btclient data
 
 *** Getting Started ***
 
 See start.sh for an example of how to start a wamros node. Note that
 you are required to set the _wamconf parameter. The _doinit parameter
-is optional and tells wamros to perform a small test motion at
-startup.
+is optional and tells wamros to perform a set of test motions at
+startup in joint and Cartesian space.
 
 *** Build Instructions ***
 
 Provided your ROS_PACKAGE_PATH and all the dependencies are set up
-properly, building wamros may be as simple as running: 
+properly, building wamros may be as simple as running:
 
 rosmake wamros
 

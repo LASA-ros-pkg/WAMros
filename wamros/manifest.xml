@@ -10,6 +10,8 @@
   <depend package="roscpp"/>
   <depend package="std_srvs"/>
   <depend package="wam_msgs"/>
+  <depend package="rospy" /> <!-- For teleoperation code. -->
+  <depend package="rosbag" />
  </package>
 
 
