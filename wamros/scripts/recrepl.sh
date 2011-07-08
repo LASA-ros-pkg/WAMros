@@ -1,6 +1,7 @@
 #!/bin/bash -x
 
 # This script sets the robot to passive, starts recording, then replays the recording using rosbag.
+rosservice call /wam/switchMode 0
 
 rosservice call /wam/active_passive '[0,0,0,0,0,0,0]'
 

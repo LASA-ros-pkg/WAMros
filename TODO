@@ -12,3 +12,7 @@ Roadmap for WAMros:
 Known issues:
 
 7 DOF is hardcoded, allow for 4.
+Proper cleanup on shutdown:
+       * thread join
+       * delete the mutex
+       * optional: return to home position
